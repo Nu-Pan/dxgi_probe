@@ -6,7 +6,7 @@ ext_modules = [
         "dxgi_probe._dxgi_probe",
         ["src/cpp/dxgi_probe.cpp"],
         libraries=["dxgi", "ole32", "user32"],
-        cxx_std=17,
+        cxx_std=20,
     )
 ]
 

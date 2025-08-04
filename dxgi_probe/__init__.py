@@ -8,8 +8,8 @@ _core = importlib.import_module("._dxgi_probe", package=__name__)
 
 @dataclass(frozen=True)
 class OutputInfo:
-    adapter_idx: int
-    output_idx:  int
+    adapter_index: int
+    output_index:  int
     device_name: str
     width:       int
     height:      int
@@ -17,6 +17,6 @@ class OutputInfo:
 
 def enumerate_outputs() -> List[OutputInfo]:
     """全モニター情報を列挙して返す。"""
-    return [OutputInfo(o.adapter_idx, o.output_idx, o.device_name,
+    return [OutputInfo(o.adapter_index, o.output_index, o.device_name,
                        o.width, o.height, o.primary)
             for o in _core.enumerate()]
