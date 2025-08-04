@@ -1,93 +1,161 @@
-#include <dxgi1_6.h>
+// std
 #include <vector>
 #include <string>
 #include <stdexcept>
+#include <memory>
+
+// windows
+#include <dxgi.h>
+#include <wrl/client.h>
+#include <Windows.h>
+
+// pybind11
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+// namespace
+using namespace std;
+using Microsoft::WRL::ComPtr;
 namespace py = pybind11;
 
-/* ---------- è¿”å´ç”¨æ§‹é€ ä½“ ---------- */
+// DXGI ouptut î•ñ\‘¢‘Ì
 struct OutputInfo {
-    int         adapter_idx;
-    int         output_idx;
-    std::string device_name;      // "\\\\.\\DISPLAY1"
-    int         width;            // ãƒ”ã‚¯ã‚»ãƒ«
+    int         adapter_index;
+    int         output_index;
+    string device_name;      // "\\\\.\\DISPLAY1"
+    int         width;            // ƒsƒNƒZƒ‹
     int         height;
-    bool        primary;          // ãƒ—ãƒ©ã‚¤ãƒãƒªã‹
+    bool        primary;          // ƒvƒ‰ƒCƒ}ƒŠ‚©
 };
 
-/* ---------- åˆ—æŒ™å‡¦ç† ---------- */
-static std::vector<OutputInfo> enumerate_outputs()
+// CoInitializeEz ‚ğ RAII ‚É‚·‚é‚½‚ß‚ÌƒNƒ‰ƒX
+struct CoInitializeExRAII
 {
-    std::vector<OutputInfo> list;
 
-    /* COM åˆæœŸåŒ– (å¤šé‡å‘¼ã³å‡ºã—OK) */
-    HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-    bool need_uninit = SUCCEEDED(hr);
-    if (FAILED(hr) && hr != RPC_E_CHANGED_MODE)
-        throw std::runtime_error("CoInitializeEx failed");
-
-    IDXGIFactory1* factory = nullptr;
-    hr = CreateDXGIFactory1(__uuidof(IDXGIFactory1),
-                            reinterpret_cast<void**>(&factory));
-    if (FAILED(hr) || !factory)
-        throw std::runtime_error("CreateDXGIFactory1 failed");
-
-    for (UINT ai = 0;; ++ai) {
-        IDXGIAdapter1* adapter = nullptr;
-        if (factory->EnumAdapters1(ai, &adapter) == DXGI_ERROR_NOT_FOUND)
-            break;
-
-        for (UINT oi = 0;; ++oi) {
-            IDXGIOutput* out_raw = nullptr;
-            if (adapter->EnumOutputs(oi, &out_raw) == DXGI_ERROR_NOT_FOUND)
-                break;
-
-            IDXGIOutput6* output = nullptr;
-            out_raw->QueryInterface(__uuidof(IDXGIOutput6),
-                                    reinterpret_cast<void**>(&output));
-            out_raw->Release();
-            if (!output) continue;
-
-            DXGI_OUTPUT_DESC1 desc{};
-            output->GetDesc1(&desc);
-
-            OutputInfo info;
-            info.adapter_idx = static_cast<int>(ai);
-            info.output_idx  = static_cast<int>(oi);
-            info.device_name = std::wstring(desc.DeviceName).begin(),
-            info.device_name = std::string(desc.DeviceName,
-                                    desc.DeviceName + wcslen(desc.DeviceName));
-
-            RECT rc = desc.DesktopCoordinates;
-            info.width  = rc.right  - rc.left;
-            info.height = rc.bottom - rc.top;
-            info.primary = (desc.Flags & DXGI_OUTPUT_DESC1_FLAG_PRIMARY) != 0;
-
-            list.emplace_back(std::move(info));
-            output->Release();
+    // ƒRƒ“ƒXƒgƒ‰ƒNƒ^
+    CoInitializeExRAII()
+    {
+        const HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        if(FAILED(hr))
+        {
+            throw runtime_error("CoInitializeEx Failed");
         }
-        adapter->Release();
     }
-    factory->Release();
-    if (need_uninit) CoUninitialize();
-    return list;
+
+    // ƒfƒXƒgƒ‰ƒNƒ^
+    ~CoInitializeExRAII()
+    {
+        CoUninitialize();
+    }
+
+};
+
+// DXGI output î•ñ‚ğ—ñ‹“‚·‚é
+static vector<OutputInfo> enumerate_outputs()
+{
+
+    // COM ‰Šú‰» (‘½dŒÄ‚Ño‚µOK)
+    CoInitializeExRAII coInitializeExRAII;
+
+    // ƒtƒ@ƒNƒgƒŠ[‚ğ¶¬
+    ComPtr<IDXGIFactory1> pFactory;
+    {
+        const HRESULT hr = CreateDXGIFactory1(IID_PPV_ARGS(&pFactory));
+        if(FAILED(hr))
+        {
+            throw runtime_error("CreateDXGIFactory1 Failed");
+        }
+    }
+
+    // Adapter ‚ğ‘–¸
+    vector<OutputInfo> enumeratedOutputs;
+    for (UINT adapterIndex = 0; /*nop*/; ++adapterIndex) {
+
+        // Adapter ‚ğæ“¾
+        ComPtr<IDXGIAdapter1> pAdapter;
+        {
+            const HRESULT hr = pFactory->EnumAdapters1(adapterIndex, &pAdapter);
+            if(hr == DXGI_ERROR_NOT_FOUND)
+            {
+                break;
+            }
+            else if(FAILED(hr))
+            {
+                throw runtime_error("EnumAdapters1 Failed");
+            }
+        }
+
+        // Output ‚ğ‘–¸
+        for (UINT outputIndex = 0; /*nop*/; ++outputIndex) {
+
+            // Output ‚ğæ“¾
+            ComPtr<IDXGIOutput> pOutput;
+            {
+                const HRESULT hr = pAdapter->EnumOutputs(outputIndex, &pOutput);
+                if(hr == DXGI_ERROR_NOT_FOUND)
+                {
+                    break;
+                }
+                else if(FAILED(hr))
+                {
+                    throw runtime_error("EnumOutputs Failed");
+                }
+            }
+
+            // Desc ‚ğæ“¾            
+            DXGI_OUTPUT_DESC outputDesc{};
+            {
+                pOutput->GetDesc(&outputDesc);
+            }
+
+            // ƒfƒoƒCƒX–¼‚ğ string ‚É•ÏŠ·
+            const wstring device_name_wide(outputDesc.DeviceName);
+            const string device_name(
+                device_name_wide.begin(), device_name_wide.end()
+            );
+
+            // ƒ‚ƒjƒ^[î•ñ‚ğæ“¾
+            const RECT rc = outputDesc.DesktopCoordinates;
+            MONITORINFO mi{sizeof(MONITORINFO)};
+            GetMonitorInfo(outputDesc.Monitor, &mi);
+
+            // •Ô‹p—pƒIƒuƒWƒFƒNƒg‚ğ\’z
+            const OutputInfo info = {
+                static_cast<int>(adapterIndex),
+                static_cast<int>(outputIndex),
+                device_name,
+                rc.right  - rc.left,
+                rc.bottom - rc.top,
+                (mi.dwFlags & MONITORINFOF_PRIMARY) != 0
+            };
+
+            // •Ô‹p—pƒŠƒXƒg‚É’Ç‰Á
+            enumeratedOutputs.push_back(info);
+
+        }
+    }
+
+    // ³íI—¹
+    return enumeratedOutputs;
+
 }
 
-/* ---------- pybind11 ãƒã‚¤ãƒ³ãƒ‡ã‚£ãƒ³ã‚° ---------- */
+/* ---------- pybind11 ƒoƒCƒ“ƒfƒBƒ“ƒO ---------- */
 PYBIND11_MODULE(_dxgi_probe, m)
 {
     m.doc() = "DXGI adapter/output enumeration (native)";
 
     py::class_<OutputInfo>(m, "OutputInfo")
-        .def_readonly("adapter_idx", &OutputInfo::adapter_idx)
-        .def_readonly("output_idx",  &OutputInfo::output_idx)
-        .def_readonly("device_name", &OutputInfo::device_name)
-        .def_readonly("width",       &OutputInfo::width)
-        .def_readonly("height",      &OutputInfo::height)
-        .def_readonly("primary",     &OutputInfo::primary);
+        .def_readonly("adapter_index",  &OutputInfo::adapter_index)
+        .def_readonly("output_index",   &OutputInfo::output_index)
+        .def_readonly("device_name",    &OutputInfo::device_name)
+        .def_readonly("width",          &OutputInfo::width)
+        .def_readonly("height",         &OutputInfo::height)
+        .def_readonly("primary",        &OutputInfo::primary);
 
-    m.def("enumerate", &enumerate_outputs,
-          "Return a list of OutputInfo for all active outputs");
+    m.def(
+        "enumerate",
+        &enumerate_outputs,
+        "Return a list of OutputInfo for all active outputs"
+    );
 }
