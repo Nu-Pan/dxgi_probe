@@ -1,0 +1,19 @@
+[build-system]
+requires = [
+    "setuptools>=61",   # PEP 517 対応版
+    "wheel",
+    "pybind11>=2.12"    # ヘッダを取って来るだけ
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dxgi-probe"
+version = "0.1.0"
+description = "Enumerate DXGI adapters/outputs from Python"
+authors = [{name = "Your Name", email = "you@example.com"}]
+requires-python = ">=3.8"
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: C++",
+  "Operating System :: Microsoft :: Windows",
+]
