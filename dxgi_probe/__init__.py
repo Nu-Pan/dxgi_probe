@@ -20,14 +20,3 @@ def enumerate_outputs() -> List[OutputInfo]:
     return [OutputInfo(o.adapter_idx, o.output_idx, o.device_name,
                        o.width, o.height, o.primary)
             for o in _core.enumerate()]
-
-def display_name_to_index(name: str) -> Tuple[int, int]:
-    """
-    '\\\\.\\DISPLAYn' → (adapter_idx, output_idx) へ変換。
-    見つからなければ LookupError。
-    """
-    lname = name.lower()
-    for o in _core.enumerate():
-        if o.device_name.lower() == lname:
-            return o.adapter_idx, o.output_idx
-    raise LookupError(f"{name} not found in DXGI enumeration")
