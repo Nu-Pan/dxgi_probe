@@ -41,15 +41,29 @@ struct OutputInfo {
 };
 
 // CoInitializeEz を RAII にするためのクラス
-struct CoInitializeExRAII
+class CoInitializeExRAII
 {
+public:
 
     // コンストラクタ
     CoInitializeExRAII()
+    : m_doesUninit(false)
     {
         // COM は 2 回目以降 RPC_E_CHANGED_MODE を返すことがあるので特別扱い
-        const HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-        if(hr != RPC_E_CHANGED_MODE)
+        const HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+        if(hr == S_OK)
+        {
+            m_doesUninit = true;
+        }
+        else if(hr == RPC_E_CHANGED_MODE)
+        {
+            m_doesUninit = false;
+        }
+        else if(hr == S_FALSE)
+        {
+            m_doesUninit = false;
+        }
+        else
         {
             throw_if_failed(hr, "CoInitializeEx");
         }
@@ -58,8 +72,14 @@ struct CoInitializeExRAII
     // デストラクタ
     ~CoInitializeExRAII()
     {
-        CoUninitialize();
+        if(m_doesUninit)
+        {
+            CoUninitialize();
+        }
     }
+
+private:
+    bool m_doesUninit;
 
 };
 
